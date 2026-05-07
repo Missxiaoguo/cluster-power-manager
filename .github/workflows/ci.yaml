@@ -48,8 +48,11 @@ jobs:
     env:
       REGISTRY: ghcr.io
       OPERATOR_IMAGE: ghcr.io/missxiaoguo/cluster-power-manager-operator
+      OPERATOR_DESCRIPTION: Cluster Power Manager Operator
       AGENT_IMAGE: ghcr.io/missxiaoguo/cluster-power-node-agent
+      AGENT_DESCRIPTION: Cluster Power Manager Node Agent
       IMAGE_TAG: latest
+      DOCKER_METADATA_ANNOTATIONS_LEVELS: index
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -68,12 +71,11 @@ jobs:
       - name: Operator image metadata
         id: operator-meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
         with:
           images: ${{ env.OPERATOR_IMAGE }}
           tags: type=raw,value=${{ env.IMAGE_TAG }}
-          labels: org.opencontainers.image.description=Cluster Power Manager Operator
+          labels: org.opencontainers.image.description=${{ env.OPERATOR_DESCRIPTION }}
+          annotations: org.opencontainers.image.description=${{ env.OPERATOR_DESCRIPTION }}
       - name: ${{ github.event_name == 'push' && 'Build and push operator image' || 'Build operator image' }}
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
@@ -87,12 +89,11 @@ jobs:
       - name: Agent image metadata
         id: agent-meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
         with:
           images: ${{ env.AGENT_IMAGE }}
           tags: type=raw,value=${{ env.IMAGE_TAG }}
-          labels: org.opencontainers.image.description=Cluster Power Manager Node Agent
+          labels: org.opencontainers.image.description=${{ env.AGENT_DESCRIPTION }}
+          annotations: org.opencontainers.image.description=${{ env.AGENT_DESCRIPTION }}
       - name: ${{ github.event_name == 'push' && 'Build and push agent image' || 'Build agent image' }}
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:

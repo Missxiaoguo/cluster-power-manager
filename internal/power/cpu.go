@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
 // CPU represents a compute unit/thread as seen by the OS
@@ -12,12 +11,10 @@ import (
 type CPU interface {
 	GetID() uint
 	GetAbsMinMax() (uint, uint)
-	SetPool(pool Pool) error
 
 	getPool() Pool
-	doSetPool(pool Pool) error
+	setPool(pool Pool) error
 	consolidate() error
-	consolidateUnsafe() error
 	GetCore() Core
 
 	SetCPUFrequency(frequency uint) error
@@ -28,10 +25,9 @@ type CPU interface {
 }
 
 type cpuImpl struct {
-	id    uint
-	mutex sync.Locker
-	pool  Pool
-	core  Core
+	id   uint
+	pool Pool
+	core Core
 }
 
 func newCPU(coreID uint, core Core) (CPU, error) {
@@ -44,20 +40,15 @@ func newCPU(coreID uint, core Core) (CPU, error) {
 		core.setType(cType)
 	}
 	cpu := &cpuImpl{
-		id:    coreID,
-		mutex: &sync.Mutex{},
-		core:  core,
+		id:   coreID,
+		core: core,
 	}
 
 	return cpu, nil
 }
 
+// consolidate applies the CPU's pool profile.
 func (cpu *cpuImpl) consolidate() error {
-	cpu.mutex.Lock()
-	defer cpu.mutex.Unlock()
-	return cpu.consolidateUnsafe()
-}
-func (cpu *cpuImpl) consolidateUnsafe() error {
 	// Apply P-states configuration
 	if err := cpu.updateFrequencies(); err != nil {
 		return err
@@ -69,9 +60,9 @@ func (cpu *cpuImpl) consolidateUnsafe() error {
 	return nil
 }
 
-// SetPool moves current core to a specified target pool
+// setPool moves the current CPU to the target pool
 // allowed movements are reservedPoolType <-> sharedPoolType and sharedPoolType <-> any exclusive pool
-func (cpu *cpuImpl) SetPool(targetPool Pool) error {
+func (cpu *cpuImpl) setPool(targetPool Pool) error {
 	/*
 		case 0: current and target pool are the same -> do nothing
 
@@ -93,8 +84,6 @@ func (cpu *cpuImpl) SetPool(targetPool Pool) error {
 	}
 
 	log.Info("Set pool", "cpu", cpu.id, "source pool", cpu.pool.Name(), "target pool", targetPool.Name())
-	cpu.mutex.Lock()
-	defer cpu.mutex.Unlock()
 
 	if cpu.pool == targetPool { // case 0,1,5
 		return nil
@@ -120,19 +109,10 @@ func (cpu *cpuImpl) SetPool(targetPool Pool) error {
 	panic("we should never get here")
 }
 
+// doSetPool updates pool membership after setPool validates the move.
 func (cpu *cpuImpl) doSetPool(pool Pool) error {
-	cpu.pool.poolMutex().Lock()
-	pool.poolMutex().Lock()
-	log.V(4).Info("acquired mutexes", "source", cpu.pool.Name(), "target", pool.Name(), "cpu", cpu.id)
-
 	origPool := cpu.pool
 	cpu.pool = pool
-
-	defer func() {
-		log.V(4).Info("releasing mutexes", "source", origPool.Name(), "target", pool.Name())
-		origPool.poolMutex().Unlock()
-		pool.poolMutex().Unlock()
-	}()
 
 	origPoolCpus := origPool.Cpus()
 	log.V(4).Info("removing cpu from pool", "pool", origPool.Name(), "coreID", cpu.id)
@@ -142,7 +122,7 @@ func (cpu *cpuImpl) doSetPool(pool Pool) error {
 	}
 
 	log.V(4).Info("starting consolidation of cpu", "coreID", cpu.id)
-	if err := cpu.consolidateUnsafe(); err != nil {
+	if err := cpu.consolidate(); err != nil {
 		cpu.pool = origPool
 		origPoolCpus.add(cpu)
 		return err
